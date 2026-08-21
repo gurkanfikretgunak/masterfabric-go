@@ -17,6 +17,7 @@ import (
 	"github.com/masterfabric-go/masterfabric/internal/infrastructure/http/handler/health"
 	iamHandler "github.com/masterfabric-go/masterfabric/internal/infrastructure/http/handler/iam"
 	realtimeHandler "github.com/masterfabric-go/masterfabric/internal/infrastructure/http/handler/realtime"
+	synclinkHandler "github.com/masterfabric-go/masterfabric/internal/infrastructure/http/handler/synclink"
 	tenantHandler "github.com/masterfabric-go/masterfabric/internal/infrastructure/http/handler/tenant"
 
 	// Services & middleware
@@ -54,6 +55,7 @@ type Dependencies struct {
 	APIMgmtHandler  *apimgmtHandler.Handler
 	AuditHandler    *auditHandler.Handler
 	RealtimeHandler *realtimeHandler.Handler
+	PageHandler     *synclinkHandler.Handler
 
 	// Gateway
 	GatewayPipeline *gateway.Pipeline
@@ -94,6 +96,11 @@ func New(deps Dependencies) *chi.Mux {
 			}
 		})
 
+		// Public SyncLink page (no JWT)
+		if deps.PageHandler != nil {
+			r.Get("/public/pages/{slug}", deps.PageHandler.GetPublicPage)
+		}
+
 		// Protected routes (require JWT)
 		r.Group(func(r chi.Router) {
 			if deps.AuthService != nil {
@@ -120,6 +127,21 @@ func New(deps Dependencies) *chi.Mux {
 			// User routes
 			if deps.IAMHandler != nil {
 				r.Get("/me", deps.IAMHandler.GetMe)
+			}
+
+			if deps.PageHandler != nil {
+				r.Route("/me/page", func(r chi.Router) {
+					r.Get("/", deps.PageHandler.GetMyPage)
+					r.Put("/", deps.PageHandler.UpsertPage)
+					r.Get("/links", deps.PageHandler.ListLinks)
+					r.Post("/links", deps.PageHandler.CreateLink)
+					r.Put("/links/reorder", deps.PageHandler.ReorderLinks)
+					r.Patch("/links/{id}", deps.PageHandler.UpdateLink)
+					r.Delete("/links/{id}", deps.PageHandler.DeleteLink)
+				})
+			}
+
+			if deps.IAMHandler != nil {
 				r.With(maybeRequirePermission(deps.RBACService, "user:read")).Route("/users", func(r chi.Router) {
 					r.Get("/", deps.IAMHandler.ListUsers)
 					r.Get("/{id}", deps.IAMHandler.GetUser)
